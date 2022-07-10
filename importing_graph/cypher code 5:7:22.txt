@@ -1,0 +1,20 @@
+LOAD CSV WITH HEADERS FROM 'file:///20rows_diabetic_data.csv' AS row
+WITH row MERGE (e:Encounter {`en_id`:row.`encounter_id`})
+ON CREATE SET
+e.race = row.race, 
+e.gender = row.gender,
+e.age = row.age,
+e.`time_in_hospital` = row.`time_in_hospital`,
+e.`discharge_code` = toInteger(row.`discharge_disposition_id`);
+
+UNWIND range(1, 30) AS id
+CREATE (d:DischargeCode {id:toInteger(id)});
+
+MATCH
+  (e:Encounter),
+  (d:DischargeCode)
+WHERE e.`discharge_code` = d.id
+CREATE (e)-[r:DISCHARGED]->(d)
+RETURN type(r);
+
+MATCH (n) RETURN n;
