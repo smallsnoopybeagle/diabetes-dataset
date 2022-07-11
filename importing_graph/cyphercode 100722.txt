@@ -1,0 +1,49 @@
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+LOAD CSV WITH HEADERS FROM 'file:///100rows_diabetes_dataset_copy.csv' AS row
+WITH row MERGE (e:Encounter {`en_id`:row.`encounter_id`})
+ON CREATE SET
+e.race = row.race, 
+e.gender = row.gender,
+e.age = row.age,
+e.`time_in_hospital` = row.`time_in_hospital`,
+e.`discharge_code` = toInteger(row.`discharge_disposition_id`),
+e.`diag_1` = row.`diag_1`,
+e.`diag_2` = row.`diag_2`,
+e.`diag_3` = row.`diag_3`;
+
+MATCH (e:Encounter) MERGE (diag:Diagnosis {id: e.`diag_1`}) RETURN *;
+MATCH (e:Encounter) MERGE (diag:Diagnosis {id: e.`diag_2`}) RETURN *;
+MATCH (e:Encounter) MERGE (diag:Diagnosis {id: e.`diag_3`}) RETURN *;
+
+MATCH
+  (e:Encounter),
+  (diag:Diagnosis)
+WHERE e.`diag_1` = diag.id
+CREATE (e)-[r:DIAGNOSED]->(diag);
+
+MATCH
+  (e:Encounter),
+  (diag:Diagnosis)
+WHERE e.`diag_2` = diag.id
+CREATE (e)-[r:DIAGNOSED]->(diag);
+
+MATCH
+  (e:Encounter),
+  (diag:Diagnosis)
+WHERE e.`diag_3` = diag.id
+CREATE (e)-[r:DIAGNOSED]->(diag);
+
+UNWIND range(1, 30) AS id
+CREATE (d:DischargeCode {id:toInteger(id)});
+
+MATCH
+  (e:Encounter),
+  (d:DischargeCode)
+WHERE e.`discharge_code` = d.id
+CREATE (e)-[r:DISCHARGED]->(d)
+RETURN type(r);
+
+MATCH (n) RETURN n;
+
+
