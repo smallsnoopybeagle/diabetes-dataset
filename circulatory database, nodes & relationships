@@ -1,0 +1,70 @@
+//nodes import 
+LOAD CSV WITH HEADERS FROM 'file:///dataset2.csv' AS row 
+MERGE (n:patient {id: toInteger(row.patientnbr)})
+on create set n.diag1code = row.diag1code,
+            n.diag1detail = row.Diag1detail,
+            n.diag1category = row.Diag1category;
+            
+            
+//nodes 9 circulatory diseases 
+create (a:disease{disease:'acute rheumatic fever', code:'390-392'});
+create (a:disease{disease:'chronic rheumatic heart', code:'393-398'});
+create (a:disease{disease:'hypertensive disease', code:'401-405'});
+create (a:disease{disease:'ischemic heart disease', code:'410-414'});
+create (a:disease{disease:'diseases of pulmonary circulation', code:'415-417'});
+create (a:disease{disease:'other forms of heart disease', code:'420-429'});
+create (a:disease{disease:'cerebrovascular disease', code:'430-438'});
+create (a:disease{disease:'diseases of arteries,arterioles, and capillaries', code:'440-449'});
+create (a:disease{disease:'diseases of veins and lymphatics, and other diseases of circulatory system', code:'451-459'});
+
+
+//nodes circulatory disease
+create (b:diagnose1{diagnose1:'circulatory disease'});
+
+
+//relationship
+//relationship cerebrovascular
+match (n:patient),(a:disease)
+where n.diag1category = 'Cerebrovascular disease'and 
+    a.disease = 'cerebrovascular disease'
+create (n)-[r:tested]->(a);
+
+//relationship chronic rheumatic heart
+match (n:patient),(a:disease)
+where n.diag1category = 'Chronic rheumatic heart 'and 
+    a.disease = 'chronic rheumatic heart'
+create (n)-[r:tested]->(a);
+
+//relationship disease of arteries...
+match (n:patient),(a:disease)
+where n.diag1category = 'Diseases of arteries arterioles, and capillaries'and 
+    a.disease = 'diseases of arteries,arterioles, and capillaries'
+create (n)-[r:tested]->(a);
+
+//relationship diseases of veins ...
+match (n:patient),(a:disease)
+where n.diag1category = 'Diseases of veins and lymphatics, and other disease of circulatory system'and 
+    a.disease = 'diseases of veins and lymphatics, and other diseases of circulatory system'
+create (n)-[r:tested]->(a);
+
+//relationship Ischemic
+match (n:patient),(a:disease)
+where n.diag1category = 'Ischemic heart disease 'and 
+    a.disease = 'ischemic heart disease'
+create (n)-[r:tested]->(a);
+
+//relationship other forms
+match (n:patient),(a:disease)
+where n.diag1category = 'Other forms of heart disease 'and 
+    a.disease = 'other forms of heart disease'
+create (n)-[r:tested]->(a);
+
+//relationship- hypertensive
+match (n:patient),(a:disease)
+where n.diag1category= 'Hypertensive disease' and  
+    a.disease = 'hypertensive disease'
+create (n)-[r:tested]->(a);
+
+//relationship** circulatory 
+match (a:disease),(b:diagnose1)
+create (a)-[r:categorised]->(b);
