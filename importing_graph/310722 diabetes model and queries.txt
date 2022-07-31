@@ -1,0 +1,108 @@
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///100rows_diabetes_dataset_copy.csv' AS row
+WITH row MERGE (e:Encounter {`en_id`:row.`encounter_id`})
+ON CREATE SET
+e.race = row.race, 
+e.gender = row.gender,
+e.age = row.age,
+e.`time_in_hospital` = row.`time_in_hospital`,
+e.`discharge_code` = toInteger(row.`discharge_disposition_id`),
+e.`diag_1` = row.`diag_1`,
+e.`diag_2` = row.`diag_2`,
+e.`diag_3` = row.`diag_3`;
+
+//creating of diagnosis category data
+CREATE (d: RawDataCircDiag {
+id: "RawDataCircDiag",
+desclist:['acute rheumatic fever', 
+'chronic rheumatic heart', 
+'hypertensive disease', 
+'ischemic heart disease',
+'diseases of pulmonary circulation',
+'other forms of heart disease',
+'cerebrovascular disease',
+'diseases of arteries,arterioles, and capillaries', 
+'diseases of veins and lymphatics, and other diseases of circulatory system'
+],
+startlist: [390, 393, 401, 410, 415, 420, 430, 440, 451],
+endlist: [392, 398, 405, 414, 417, 429, 438, 449, 459]});
+
+//creating diagnosis categories
+MATCH (n {id:"RawDataCircDiag" })
+UNWIND range(0, 8) AS index
+CREATE (d:DiagnosisType {
+id: n.desclist[index],
+startcode: n.startlist[index],
+endcode: n.endlist[index],
+workingindex: index});
+
+//creating of classification of discharge codes
+//stoopid cypher doesn't allow a list of lists
+//now I have to make so much spaghetti code
+//if I change my name to Giuseppe, I can start up a pasta shop
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Discharged to Home',
+codelist:[1]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Inpatient',
+codelist:[2,9,5,23,27,28,29,30]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Home Care or Nursing',
+codelist:[6,8,22,24]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Death',
+codelist: [11,19,20,21]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Hospital Monitoring',
+codelist: [12,16,17]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Palliative Care',
+codelist: [13,14]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Specialised or Intensive Care',
+codelist: [3,4,15]});
+
+CREATE (d: DiscCodeCategory {
+type: 'DiscCodeCategory',
+id: 'Ignored',
+codelist: [7,10,18,25,26]});
+
+MATCH (n {type:"DiscCodeCategory"})
+UNWIND n.codelist AS index2
+CREATE (d:DischargeCode {id:toInteger(index2)})-[r:DIAGNOSIS_TYPE]->(n);
+
+//sending discharge codes to their categories
+
+//sending people to their diagnosis categories
+MATCH (e: Encounter) , (d: DiagnosisType)
+WHERE (toInteger(e.`diag_1`) IN range(d.startcode, d.endcode))
+CREATE (e)-[r:PRIMARY_DIAGNOSED]->(d);
+
+//discharge codes match with encounters
+MATCH
+  (e:Encounter),
+  (d:DischargeCode)
+WHERE e.`discharge_code` = d.id
+CREATE (e)-[r:DISCHARGED]->(d)
+RETURN type(r);
+
+//queries
+MATCH (dcc:DiscCodeCategory {id: 'Death'})-[r1:DIAGNOSIS_TYPE]-()-[r2:DISCHARGED]-()-[r3:PRIMARY_DIAGNOSED]-(diagcode)
+RETURN diagcode.id AS Primary_diagnosis_code;

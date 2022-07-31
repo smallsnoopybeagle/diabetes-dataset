@@ -1,0 +1,57 @@
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///100rows_diabetes_dataset_copy.csv' AS row
+WITH row MERGE (e:Encounter {`en_id`:row.`encounter_id`})
+ON CREATE SET
+e.race = row.race, 
+e.gender = row.gender,
+e.age = row.age,
+e.`time_in_hospital` = row.`time_in_hospital`,
+e.`discharge_code` = toInteger(row.`discharge_disposition_id`),
+e.`diag_1` = row.`diag_1`,
+e.`diag_2` = row.`diag_2`,
+e.`diag_3` = row.`diag_3`;
+
+//creation of discharge codes
+UNWIND range(1, 30) AS id
+CREATE (d:DischargeCode {id:toInteger(id)});
+
+//creating of diagnosis category data
+CREATE (d: RawData {
+id: "RawData",
+desclist:['acute rheumatic fever', 
+'chronic rheumatic heart', 
+'hypertensive disease', 
+'ischemic heart disease',
+'diseases of pulmonary circulation',
+'other forms of heart disease',
+'cerebrovascular disease',
+'diseases of arteries,arterioles, and capillaries', 
+'diseases of veins and lymphatics, and other diseases of circulatory system'
+],
+startlist: [390, 393, 401, 410, 415, 420, 430, 440, 451],
+endlist: [392, 398, 405, 414, 417, 429, 438, 449, 459]});
+
+//creating diagnosis categories
+MATCH (n {id:"RawData" })
+UNWIND range(0, 8) AS index
+CREATE (d:DiagnosisType {
+id: n.desclist[index],
+startcode: n.startlist[index],
+endcode: n.endlist[index],
+workingindex: index});
+
+//sending people to their diagnosis categories
+MATCH (e: Encounter) , (d: DiagnosisType)
+WHERE (toInteger(e.`diag_1`) IN range(d.startcode, d.endcode))
+CREATE (e)-[r:DIAGNOSED]->(d);
+
+//discharge codes match with encounters
+MATCH
+  (e:Encounter),
+  (d:DischargeCode)
+WHERE e.`discharge_code` = d.id
+CREATE (e)-[r:DISCHARGED]->(d)
+RETURN type(r);
