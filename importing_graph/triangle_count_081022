@@ -1,0 +1,53 @@
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///100rows_diabetes_dataset_copy.csv' AS row
+WITH row MERGE (e:Encounter {`en_id`:row.`encounter_id`})
+ON CREATE SET
+e.race = row.race, 
+e.gender = row.gender,
+e.age = row.age,
+e.`time_in_hospital` = row.`time_in_hospital`,
+e.`discharge_code` = toInteger(row.`discharge_disposition_id`),
+e.`diag_1` = row.`diag_1`,
+e.`diag_2` = row.`diag_2`,
+e.`diag_3` = row.`diag_3`;
+
+MATCH (e: Encounter)
+MERGE (diaga:Diagnosis {id: e.`diag_1`}) 
+MERGE (diagb:Diagnosis {id: e.`diag_2`})
+MERGE (diagc:Diagnosis {id: e.`diag_3`})
+MERGE (diaga) - [r1:COMMON_PATIENT{id: e.`en_id`}] -> (diagb)
+MERGE (diagb) - [r2:COMMON_PATIENT{id: e.`en_id`}] -> (diagc)
+MERGE (diagc) - [r3:COMMON_PATIENT{id: e.`en_id`}] -> (diaga)
+;
+
+//you must get GDS and APOC before beginning
+//because triangle count is in GDS library
+//and you must project the graph (take a section out of the knowledge graph)
+//before GDS analysis is to even be done
+
+//projection
+CALL gds.graph.project(
+  'myGraph',
+  'Diagnosis',
+  {
+    COMMON_PATIENT: {
+      orientation: 'UNDIRECTED'
+    }
+  }
+);
+
+//memory estimation, probably more important if we upscale
+CALL gds.triangleCount.write.estimate('myGraph', { writeProperty: 'triangleCount' })
+YIELD nodeCount, relationshipCount, bytesMin, bytesMax, requiredMemory;
+
+//triangle count algorithm
+CALL gds.triangleCount.stream('myGraph')
+YIELD nodeId, triangleCount
+RETURN gds.util.asNode(nodeId).id AS id, triangleCount
+ORDER BY triangleCount DESC;
+
+//stop graph projection
+CALL gds.graph.drop('myGraph') YIELD graphName;
