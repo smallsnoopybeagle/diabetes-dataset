@@ -1,0 +1,44 @@
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///10000_rows_diabetic_dataset.csv' AS row
+WITH row MERGE (diaga:Diagnosis {id: row.`diag_1`})
+MERGE (diagb:Diagnosis {id: row.`diag_2`})
+MERGE (diagc:Diagnosis {id: row.`diag_3`})
+MERGE (diaga)-[k1:COMMON_PATIENT]-(diagb) 
+ON CREATE SET k1.number=1
+ON MATCH SET k1.number=k1.number+1
+MERGE (diagb)-[k2:COMMON_PATIENT]-(diagc) 
+ON CREATE SET k2.number=1
+ON MATCH SET k2.number=k2.number+1
+MERGE (diagc)-[k3:COMMON_PATIENT]-(diaga) 
+ON CREATE SET k3.number=1
+ON MATCH SET k3.number=k3.number+1;
+
+//vertex strength and unique neighbours
+MATCH(d1: Diagnosis)
+SET d1.`vertex_strength` = 0;
+MATCH ((d1:Diagnosis)-[r:COMMON_PATIENT]-(d2:Diagnosis))
+SET d1.`vertex_strength` = d1.`vertex_strength` + r.number;
+
+//unadjusted clustering coefficient
+//idk whether this will stay relevant with large numbers
+//but i think it will
+MATCH(dmain: Diagnosis)
+SET dmain.`clustering_coeff` = 0;
+MATCH ((dmain:Diagnosis)-[ra:COMMON_PATIENT]-(da:Diagnosis)-[rx:COMMON_PATIENT]-(db:Diagnosis)-[rb:COMMON_PATIENT]-(dmain))
+SET dmain.`clustering_coeff` = dmain.`clustering_coeff` + (toFloat(ra.number + rb.number)/2);
+
+//unique neighbours
+MATCH(d1: Diagnosis)
+SET d1.`unique_neighbours` = 0;
+MATCH ((d1:Diagnosis)-[r:COMMON_PATIENT]-(d2:Diagnosis))
+SET d1.`unique_neighbours` = d1.`unique_neighbours` + 1;
+
+//adjusting clustering coefficient
+//20 is size of data and the 2 is because each data has 3 diagnoses and (3-1) = 2
+MATCH (d:Diagnosis)
+WHERE (d.`unique_neighbours` > 1)
+SET d.`clustering_coeff` = toFloat(d.`clustering_coeff`)/(d.`vertex_strength`*(d.`unique_neighbours`-1));
+

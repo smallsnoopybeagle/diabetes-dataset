@@ -1,0 +1,60 @@
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///the_entire_diabetic_dataset.csv' AS row
+WITH row MERGE (diaga:Diagnosis {id: row.`diag_1`})
+MERGE (diagb:Diagnosis {id: row.`diag_2`})
+MERGE (diagc:Diagnosis {id: row.`diag_3`})
+MERGE (diaga)-[k1:COMMON_PATIENT]-(diagb) 
+ON CREATE SET k1.number=1
+ON MATCH SET k1.number=k1.number+1
+MERGE (diagb)-[k2:COMMON_PATIENT]-(diagc) 
+ON CREATE SET k2.number=1
+ON MATCH SET k2.number=k2.number+1
+MERGE (diagc)-[k3:COMMON_PATIENT]-(diaga) 
+ON CREATE SET k3.number=1
+ON MATCH SET k3.number=k3.number+1;
+
+//vertex strength and unique neighbours
+MATCH(d1: Diagnosis)
+SET d1.`vertex_strength` = 0;
+MATCH ((d1:Diagnosis)-[r:COMMON_PATIENT]-(d2:Diagnosis))
+SET d1.`vertex_strength` = d1.`vertex_strength` + r.number;
+
+//graph projection
+//projection
+CALL gds.graph.project(
+  'myGraph',
+  'Diagnosis',
+  {COMMON_PATIENT: {
+      orientation: "UNDIRECTED",
+      properties: "number"
+    }
+  }
+)
+YIELD graphName AS graph, nodeProjection, nodeCount AS nodes, relationshipProjection, relationshipCount AS rels;
+
+//weighted louvain algorithm
+CALL gds.louvain.stream('myGraph', { relationshipWeightProperty: 'number'})
+YIELD nodeId, communityId, intermediateCommunityIds
+RETURN gds.util.asNode(nodeId).id AS id, communityId, gds.util.asNode(nodeId).`vertex_strength`
+ORDER BY communityId ASC;
+
+//louvain modularity evaluation
+CALL gds.louvain.mutate('myGraph', { relationshipWeightProperty: 'number', mutateProperty: 'community' })
+YIELD nodes, communityCount, modularity, modularities;
+//6-9 communities, score of 0.12
+
+//modularity maximisation
+CALL gds.beta.modularityOptimization.stream('myGraph', { relationshipWeightProperty: 'number'})
+YIELD nodeId, communityId
+RETURN gds.util.asNode(nodeId).name AS name, communityId, gds.util.asNode(nodeId).`vertex_strength`
+ORDER BY communityId;
+
+//modularity maximisation evaluation
+CALL gds.beta.modularityOptimization.mutate('myGraph', { relationshipWeightProperty: 'number', mutateProperty: 'community' })
+YIELD nodes, communityCount, ranIterations, didConverge, modularity;
+//score about 0.21, 28 communities
+//still, not very promising
+
