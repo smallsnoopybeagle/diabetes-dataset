@@ -1,0 +1,21 @@
+//second parse draft 2
+LOAD CSV WITH HEADERS FROM 'file:///20_rows_diabetic_dataset.csv' AS row
+WITH row
+FOREACH(ignoreMe IN CASE WHEN (toInteger(row.`discharge_disposition_id`) NOT IN [3,4,15] THEN [1] ELSE [] END|
+	MATCH (diaga:Diagnosis {id: row.`diag_1`})-[k1:COMMON_PATIENT]-(diagb:Diagnosis {id: row.`diag_2`}
+	SET k1.nspec = k1.nspec + 1
+)
+FOREACH(ignoreMe IN CASE WHEN (toInteger(row.`discharge_disposition_id`) IN [3,4,15] THEN [1] ELSE [] END|
+	MATCH (diaga:Diagnosis {id: row.`diag_1`})-[k1:COMMON_PATIENT]-(diagb:Diagnosis {id: row.`diag_2`}
+	SET k1.spec = k1.spec + 1
+)
+
+//second parse draft
+LOAD CSV WITH HEADERS FROM 'file:///20_rows_diabetic_dataset.csv' AS row
+WITH row MATCH (diaga:Diagnosis {id: row.`diag_1`})-[k1:COMMON_PATIENT]-(diagb:Diagnosis {id: row.`diag_2`}) 
+CASE row.`discharge_disposition_id` 
+	WHEN (toInteger(row.`discharge_disposition_id`) IN [3,4,15]) THEN 1
+	ELSE 0
+END AS spectest
+SET k1.spec = k1.spec + spectest
+SET k1.nspec = k1.nspec + 1 - spectest
