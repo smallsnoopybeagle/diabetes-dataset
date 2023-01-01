@@ -1,0 +1,78 @@
+//first parse
+//unique disease codes
+CREATE CONSTRAINT Diagnosis_id IF NOT EXISTS ON (diag: Diagnosis) ASSERT diag.id IS UNIQUE;
+
+//importing data
+LOAD CSV WITH HEADERS FROM 'file:///the_entire_diabetic_dataset.csv' AS row
+WITH row MERGE (diaga:Diagnosis {id: row.`diag_1`})
+MERGE (diagb:Diagnosis {id: row.`diag_2`})
+MERGE (diagc:Diagnosis {id: row.`diag_3`})
+MERGE (diaga)-[k1:COMMON_PATIENT]-(diagb) 
+ON CREATE SET k1.number=1
+ON CREATE SET k1.spec = 0
+ON MATCH SET k1.number=k1.number+1
+MERGE (diagb)-[k2:COMMON_PATIENT]-(diagc) 
+ON CREATE SET k2.number=1
+ON CREATE SET k2.spec = 0
+ON MATCH SET k2.number=k2.number+1
+MERGE (diagc)-[k3:COMMON_PATIENT]-(diaga) 
+ON CREATE SET k3.number=1
+ON CREATE SET k3.spec = 0
+ON MATCH SET k3.number=k3.number+1;
+
+//vertex strength and unique neighbours
+MATCH(d1: Diagnosis)
+SET d1.`vertex_strength` = 0;
+MATCH ((d1:Diagnosis)-[r:COMMON_PATIENT]-(d2:Diagnosis))
+SET d1.`vertex_strength` = d1.`vertex_strength` + r.number;
+
+//expected clustering coefficient if the graph is independently allocated vertices
+MATCH (n:Diagnosis) SET n.prob = toFloat(n.`vertex_strength`)/(101793*2)
+SET n.correctionfactor = 0.17546393170453764*0.17467802304677138
+//2 highest degree vertices 
+SET n.numerator = n.correctionfactor*((0.6765733299776688 - (n.prob)^2)^2 - 0.046040107262126186 + (n.prob)^4)
+SET n.denominator = (5.939750277523971 - n.prob)^2 - 0.6765733299776688 + (n.prob)^2
+//must change, 1,2,3,(possibly 4) are anomalous
+SET n.expectedcc = (n.numerator/n.denominator);
+//4654 is maximum edge degree
+
+//unadjusted clustering coefficient
+//idk whether this will stay relevant with large numbers
+//but i think it will
+MATCH(dmain: Diagnosis)
+SET dmain.cc = 0.0
+SET dmain.ccnum = 0.0
+SET dmain.ccdenomsum = 0.0
+SET dmain.ccdenomsqsum = 0.0;
+MATCH ((dmain:Diagnosis)-[ra:COMMON_PATIENT]-(da:Diagnosis)-[rx:COMMON_PATIENT]-(db:Diagnosis)-[rb:COMMON_PATIENT]-(dmain))
+SET dmain.ccnum = dmain.ccnum + (ra.number*rx.number*rb.number);
+MATCH ((dmain:Diagnosis)-[ra:COMMON_PATIENT]-(da:Diagnosis))
+SET dmain.ccdenomsum = dmain.ccdenomsum + (ra.number)
+SET dmain.ccdenomsqsum = dmain.ccdenomsqsum + (ra.number^2)
+SET dmain.cc = (dmain.ccnum/(dmain.ccdenomsum^2 - dmain.ccdenomsqsum))/4654;
+
+//second parse 
+//gives number of escalations to specialists
+LOAD CSV WITH HEADERS FROM 'file:///the_entire_diabetic_dataset.csv' AS row
+WITH row
+MATCH (diaga:Diagnosis{id: row.`diag_1`})-[r1:COMMON_PATIENT]-(diagb:Diagnosis{id:row.`diag_2`}) WHERE (toInteger(row.`discharge_disposition_id`) IN [3,4,15])
+SET r1.spec = r1.spec+1
+WITH row
+MATCH (diagb:Diagnosis{id:row.`diag_2`})-[r2:COMMON_PATIENT]-(diagc:Diagnosis{id:row.`diag_3`}) 
+SET r2.spec = r2.spec+1
+WITH row
+MATCH (diagc:Diagnosis{id:row.`diag_3`})-[r3:COMMON_PATIENT]-(diaga:Diagnosis{id: row.`diag_1`}) 
+SET r3.spec = r3.spec+1;
+
+//isolate the cluster
+MATCH((n1:Diagnosis)-[r1:COMMON_PATIENT]-(n2:Diagnosis{id: "411"}))
+SET n2.relevance = 1
+SET n1.relevance = 1;
+
+//to get the number of specialist co-occurences
+MATCH((n1:Diagnosis)-[r1:COMMON_PATIENT]-(n2:Diagnosis)) WHERE n1.relevance = 1 AND n2.relevance = 1
+RETURN sum(r1.spec);
+
+//to get the number of co-occurences within cluster
+MATCH((n1:Diagnosis)-[r1:COMMON_PATIENT]-(n2:Diagnosis)) WHERE n1.relevance = 1 AND n2.relevance = 1
+RETURN sum(r1.number);
